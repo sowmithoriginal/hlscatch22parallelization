@@ -38,25 +38,30 @@ void co_autocorrs(double y[DATA_SIZE], double z[DATA_SIZE])
     double m, nFFT;
     m = mean(y);
     
-    cmplx_type input[DATA_SIZE];
-    cmplx_type output[DATA_SIZE];
+    cmplx_type input[2 * DATA_SIZE];
+    cmplx_type output[2 * DATA_SIZE];
     
     for (int i = 0; i < DATA_SIZE; i++) {
         input[i].real = y[i] - m;
         input[i].imag = 0.0; 
     }
+    for (int i = DATA_SIZE; i < 2 * DATA_SIZE; i++) {
+        input[i].real = 0.0;
+        input[i].imag = 0.0; 
+    }
+
     pease_fft(input, output);
     dot_multiply(output, input);
     pease_fft(input, output);
 
     cmplx_type divisor = output[0];
     
-    for (int i = 0; i < DATA_SIZE; i++) {
+    for (int i = 0; i < 2 * DATA_SIZE; i++) {
         input[i] = cmpxdiv(divisor, output[i]); // F[i] / divisor;
     }
 
 
-    for (int i = 0; i < DATA_SIZE; i++) {
+    for (int i = 0; i < 2 * DATA_SIZE; i++) {
   
         z[i] = input[i].real;
     }
@@ -67,7 +72,7 @@ void co_autocorrs(double y[DATA_SIZE], double z[DATA_SIZE])
 int CO_FirstMin_ac(double window[DATA_SIZE])
 {
     // Removed NaN check
-    double autocorrs[DATA_SIZE];
+    double autocorrs[2 * DATA_SIZE];
     co_autocorrs(window, autocorrs);
     int minInd = DATA_SIZE;
     for(int i = 1; i < DATA_SIZE-1; i++)
@@ -93,14 +98,11 @@ extern "C" void krnl(data_t* input, data_t* output) {
 
     /* Reading from DDR*/
     for (int i = 0; i < DATA_SIZE; i++) {
-        window[i] = input[w + i];
+        window[i] = input[i];
     }
     
     /* Feature Extraction */
     result = CO_FirstMin_ac(window);
-    std::cout << result; 
     /* Writing to DDR */
-    output[w] = result;
-
-    w++; 
+    output[0] = result;
 }

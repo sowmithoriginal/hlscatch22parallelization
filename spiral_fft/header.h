@@ -12,13 +12,13 @@
 //  N<64 may fail because of pipeline hazards
 // R is the radix
 // SW is the streaming width. SW=n*R (n>=1) must be satisfied
-#define N 128
+#define N 256
 #define R 2
 #define SW 4
 // must be 2
 
-#define LOGrN 7
-#define LOG2N 7
+#define LOGrN 8
+#define LOG2N 8
 #define LOG2R 1
 #define LOG2SW 2
 #define LOG2_LOGrN 3
