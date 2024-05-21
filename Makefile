@@ -86,6 +86,8 @@ LDFLAGS += $(opencl_LDFLAGS)
 INCLUDES = ./include
 INCLUDES_H = ./include_host
 INCLUDES_SPIRAL = ./spiral_fft
+INCLUDES_SPIRAL_N = ./spiral_fft_N
+
 ########################## Checking if PLATFORM in whitelist #######################
 PLATFORM_BLOCKLIST += nodma 
 ############################## Setting up Host Variables ##############################
@@ -102,7 +104,7 @@ endif
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
-VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps -I$(INCLUDES) -I$(INCLUDES_SPIRAL) --config config.cfg
+VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps -I$(INCLUDES) -I$(INCLUDES_SPIRAL) -I$(INCLUDES_SPIRAL_N) --config config.cfg
 ifneq ($(TARGET), hw)
 	VPP_FLAGS += -g
 endif
@@ -133,10 +135,20 @@ build: check-vitis check-device $(BINARY_CONTAINERS)
 xclbin: build
 
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
-$(TEMP_DIR)/krnl.xo: ./src/krnl.cpp $(INCLUDES_SPIRAL)/pease_fft.cpp
+$(TEMP_DIR)/krnl.xo: ./src/krnl.cpp $(INCLUDES_SPIRAL)/pease_fft.cpp $(INCLUDES_SPIRAL_N)/pease_fft1.cpp 
 	mkdir -p $(TEMP_DIR)
 	$(VPP) $(VPP_FLAGS) -c -k krnl --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' $^
 BINARY_CONTAINER_krnl_OBJS += $(TEMP_DIR)/krnl.xo
+
+$(TEMP_DIR)/load.xo: ./src/load.cpp 
+	mkdir -p $(TEMP_DIR)
+	$(VPP) $(VPP_FLAGS) -c -k load --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' $^
+BINARY_CONTAINER_krnl_OBJS += $(TEMP_DIR)/load.xo
+
+$(TEMP_DIR)/store.xo: ./src/store.cpp 
+	mkdir -p $(TEMP_DIR)
+	$(VPP) $(VPP_FLAGS) -c -k store --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' $^
+BINARY_CONTAINER_krnl_OBJS += $(TEMP_DIR)/store.xo
 
 
 $(BUILD_DIR)/krnl.xclbin: $(BINARY_CONTAINER_krnl_OBJS)
