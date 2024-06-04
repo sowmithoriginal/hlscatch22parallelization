@@ -1,7 +1,7 @@
 #ifndef CONSTANTS_HOST_H
 #define CONSTANTS_HOST_H
 
-const int TOTAL_DATA_SIZE = 1024; 
+const int TOTAL_DATA_SIZE = 131; 
 const int DATA_SIZE = 128; 
 typedef double data_t;
 
