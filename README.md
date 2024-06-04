@@ -16,3 +16,9 @@ make build TARGET=hw PLATFORM=/opt/xilinx/platforms/xilinx_u280_gen3x16_xdma_1_2
 make host
 ./host build_dir.hw.xilinx_u280_gen3x16_xdma_1_202211_1/krnl.xclbin
 ```
+
+## Hardware emulation
+
+```
+make run TARGET=hw_emu PLATFORM=/opt/xilinx/platforms/xilinx_u280_gen3x16_xdma_1_202211_1/xilinx_u280_gen3x16_xdma_1_202211_1.xpfm
+```
