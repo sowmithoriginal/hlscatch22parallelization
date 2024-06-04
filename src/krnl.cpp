@@ -4,7 +4,6 @@
 #include <math.h>
 #include "header.h"
 #include "header_N.h"
-#include <float.h>
 #include <string.h>
 #include <time.h>
 #include <cmath>
@@ -25,12 +24,13 @@
 #define piecesExt 8 //3 * deg - 1
 
 int nextpow2(int n);
-void co_autocorrs(double y[DATA_SIZE], double z[DATA_SIZE]);
+void co_autocorrscopy(double y[], double z[2*DATA_SIZE]);
+void co_autocorrs(hls::stream<data_t> &input3, double z[2*DATA_SIZE]);
 cmplx_type cmpxdiv(cmplx_type a, cmplx_type b);
-void dot_multiply(cmplx_type a[DATA_SIZE], cmplx_type b[DATA_SIZE]);
+void dot_multiply(cmplx_type a[2*DATA_SIZE], cmplx_type b[2*DATA_SIZE]);
 double mean1(double a[]);
+// int co_firstzero( double autocor[2*DATA_SIZE], int size, int maxtau);
 int co_firstzero( double y[], int size, int maxtau);
-double FC_LocalSimple_mean_tauresrat(double y[], int size, int train_length);
 double round(double var, int precision);
 double mean(const double a[], const int size);
 int num_bins_auto(const double y[], const int size);
@@ -51,7 +51,7 @@ double cov(const double x[], const double y[], const int size);
 int histcounts(const double y[DATA_SIZE], const int size, int nBins, int binCounts[], double binEdges[]);
 int linreg(const int n, const double x[], const double y[], double* m, double* b);
 double norm_(const double a[], const int size);
-double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int size, const int lag, const char how[]);
+void SC_FluctAnal_2_50_1_logi_prop_r1(double y[], const int size, const int lag, const char how[], hls::stream<data_t> &output);
 double autocov_lag(const double x[DATA_SIZE], const int size, const int lag);
 double cov_mean(double x[DATA_SIZE], double y[DATA_SIZE], const int size);
 int splinefit(const double y[DATA_SIZE], const int size, double yOut[]);
@@ -61,9 +61,9 @@ void matrix_multiply(const int sizeA1, const int sizeA2, const double A[DATA_SIZ
 void lsqsolve_sub(const int sizeA1, const int sizeA2, const double A[DATA_SIZE*DATA_SIZE], const int sizeb, const double b[DATA_SIZE], double x[DATA_SIZE]);
 void icumsum(const int a[DATA_SIZE], const int size, int b[DATA_SIZE]);
 int iLimit(int x, int lim);
-double FC_LocalSimple_mean_stderr(const double y[DATA_SIZE], const int size, const int train_length);
+void FC_LocalSimple_mean_stderr(double y[DATA_SIZE], const int size, const int train_length, hls::stream<data_t> &output);
 void cumsum(const double a[], const int size, double b[]);
-double SP_Summaries_welch_rect(const double y[], const int size, const char what[]);
+void SP_Summaries_welch_rect(double y[DATA_SIZE], const int size, const char what[], hls::stream<data_t> &output);
 int welch(const double y[], const int size, const int NFFT, const double Fs, const double window[], const int windowWidth, double *Pxx, double *f);
 double complex_abs(const cmplx_type c);
 bool is_infinite(float x);
@@ -73,7 +73,9 @@ double corr(const double x[], const double y[], const int size);
 double autocorr_lag(double x[], const int size, const int lag);
 void diff(double a[], const int size, double b[]);
 void generate(hls::stream<data_t> &input, double y[DATA_SIZE]);
-void replicate_stream(hls::stream<data_t> &input, hls::stream<data_t> &input1, hls::stream<data_t> &input2, hls::stream<data_t> &input3);
+
+
+// void FC_LocalSimple_mean_tauresrat(double y[], int size, int train_length, hls::stream<data_t> &output);
 
 void MD_hrv_classic_pnn40(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output){
     
@@ -113,9 +115,10 @@ void diff(double a[], const int size, double b[])
     }
 }
 
-double CO_trev_1_num(const double y[], const int size)
+void CO_trev_1_num(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output)
 {
-    
+    static double y[DATA_SIZE];
+    generate(input,y);
     // NaN check
     // for(int i = 0; i < size; i++)
     // {
@@ -140,7 +143,7 @@ double CO_trev_1_num(const double y[], const int size)
     
     // free(diffTemp);
     
-    return out;
+    output<<out;
 }
 
 void IN_AutoMutualInfoStats_40_gaussian_fmmi(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output)
@@ -214,7 +217,7 @@ double autocorr_lag(double x[], const int size, const int lag){
     
 }
 
-double SB_BinaryStats_diff_longstretch0(const double y[], const int size){
+void SB_BinaryStats_diff_longstretch0(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output){
     
     // NaN check
     // for(int i = 0; i < size; i++)
@@ -226,6 +229,8 @@ double SB_BinaryStats_diff_longstretch0(const double y[], const int size){
     // }
     
     // binarize
+    static double y[DATA_SIZE];
+    generate(input,y);
     int yBin[DATA_SIZE];
     for(int i = 0; i < size-1; i++){
         
@@ -253,10 +258,10 @@ double SB_BinaryStats_diff_longstretch0(const double y[], const int size){
     
     // free(yBin);
     
-    return maxstretch0;
+    output<<maxstretch0;
 }
 
-double SB_BinaryStats_mean_longstretch1(const double y[], const int size){
+void SB_BinaryStats_mean_longstretch1(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output){
     
     // NaN check
     // for(int i = 0; i < size; i++)
@@ -268,6 +273,8 @@ double SB_BinaryStats_mean_longstretch1(const double y[], const int size){
     // }
     
     // binarize
+    static double y[DATA_SIZE];
+    generate(input,y);
     int yBin[DATA_SIZE];
     double yMean = mean(y, size);
     for(int i = 0; i < size-1; i++){
@@ -292,7 +299,7 @@ double SB_BinaryStats_mean_longstretch1(const double y[], const int size){
     
     // free(yBin);
     
-    return maxstretch1;
+    output<<maxstretch1;
 }
 
 void DN_OutlierInclude_p_001_mdrmd(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output)
@@ -346,8 +353,8 @@ void DN_OutlierInclude_np_001_mdrmd(double y[], const int size, const int sign, 
     }
     if(constantFlag){
         // free(yWork);
-        output << 0;; // if constant, return 0
-    }
+        output << 0; // if constant, return 0
+    }else{
     
     // find maximum (or minimum, depending on sign)
     double maxVal = max_(yWork, size);
@@ -356,7 +363,7 @@ void DN_OutlierInclude_np_001_mdrmd(double y[], const int size, const int sign, 
     if(maxVal < inc){
         // free(yWork);
         output << 0;
-    }
+    }else{
     
     int nThresh = maxVal/inc + 1;
     
@@ -436,6 +443,8 @@ void DN_OutlierInclude_np_001_mdrmd(double y[], const int size, const int sign, 
     // free(msDti4);
     
     output << outputScalar;
+    }
+    }
 }
 
 double median(const double a[], const int size)
@@ -490,13 +499,17 @@ bool is_infinite(float x) {
 
 
 
-double SP_Summaries_welch_rect_area_5_1(const double y[], const int size)
+void SP_Summaries_welch_rect_area_5_1(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output)
 {
-    return SP_Summaries_welch_rect(y, size, "area_5_1");
+    static double y[DATA_SIZE];
+    generate(input,y);
+    SP_Summaries_welch_rect(y, size, "area_5_1", output);
 }
-double SP_Summaries_welch_rect_centroid(const double y[], const int size)
+void SP_Summaries_welch_rect_centroid(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output)
 {
-    return SP_Summaries_welch_rect(y, size, "centroid");
+    static double y[DATA_SIZE];
+    generate(input,y);
+    SP_Summaries_welch_rect(y, size, "centroid", output);
     
 }
 
@@ -629,7 +642,7 @@ int welch(const double y[], const int size, const int NFFT, const double Fs, con
     return Nout;
 }
 //int 0 1 
-double SP_Summaries_welch_rect(const double y[], const int size, const char what[])
+void SP_Summaries_welch_rect(double y[DATA_SIZE], const int size, const char what[], hls::stream<data_t> &output)
 {
     
     // NaN check
@@ -682,7 +695,7 @@ double SP_Summaries_welch_rect(const double y[], const int size, const char what
     }
      */
     
-    double output = 0;
+    double output1 = 0;
     
     if(simple_strcmp(what, "centroid") == 0){
         
@@ -695,7 +708,7 @@ double SP_Summaries_welch_rect(const double y[], const int size, const char what
             }
         }
         
-        output = centroid;
+        output1 = centroid;
         
     }
     else if(simple_strcmp(what, "area_5_1") == 0){
@@ -705,7 +718,7 @@ double SP_Summaries_welch_rect(const double y[], const int size, const char what
         }
         area_5_1 *= dw;
         
-        output = round(area_5_1,5);
+        output1 = round(area_5_1,5);
     }
     
     // free(w);
@@ -714,8 +727,9 @@ double SP_Summaries_welch_rect(const double y[], const int size, const char what
     // free(f);
     // free(S);
     
-    return round(output,5);
-    
+    double z;
+    z = round(output1,5);
+    output << z;
     
 }
 
@@ -742,12 +756,14 @@ int nextpow2(int n)
 }
 
 
-double FC_LocalSimple_mean3_stderr(const double y[DATA_SIZE], const int size)
+void FC_LocalSimple_mean3_stderr(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output)
 {
-    return FC_LocalSimple_mean_stderr(y, size, 3);
+    static double y[DATA_SIZE];
+    generate(input,y);
+    FC_LocalSimple_mean_stderr(y, size, 3, output);
 }
 
-double FC_LocalSimple_mean_stderr(const double y[DATA_SIZE], const int size, const int train_length)
+void FC_LocalSimple_mean_stderr(double y[DATA_SIZE], const int size, const int train_length, hls::stream<data_t> &output)
 {
     // // NaN check
     // for(int i = 0; i < size; i++)
@@ -773,16 +789,17 @@ double FC_LocalSimple_mean_stderr(const double y[DATA_SIZE], const int size, con
         res[i] = y[i+train_length] - yest;
     }
     
-    double output = stddev(res, size - train_length);
+    double output1 = stddev(res, size - train_length);
     
-    return output;
+    output<<output1;
     
 }
 
 
-int PD_PeriodicityWang_th0_01(const double y[], const int size){
+void PD_PeriodicityWang_th0_01(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output){
     
-    
+    static double y[DATA_SIZE];
+    generate(input,y);
     const double th = 0.01;
     
     double ySpline[DATA_SIZE];
@@ -886,7 +903,7 @@ int PD_PeriodicityWang_th0_01(const double y[], const int size){
     
 
     
-    return out;
+    output << out;
     
 }
 
@@ -1661,17 +1678,21 @@ double autocov_lag(const double x[DATA_SIZE], const int size, const int lag){
 
 
 
-double SC_FluctAnal_2_dfa_50_1_2_logi_prop_r1(const double y[DATA_SIZE], const int size){
-    return SC_FluctAnal_2_50_1_logi_prop_r1(y, size, 2, "dfa");
+void SC_FluctAnal_2_dfa_50_1_2_logi_prop_r1(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output){
+    static double y[DATA_SIZE];
+    generate(input,y);
+    SC_FluctAnal_2_50_1_logi_prop_r1(y, size, 2, "dfa",output);
 }
 
-double SC_FluctAnal_2_rsrangefit_50_1_logi_prop_r1(const double y[DATA_SIZE], const int size){
-    return SC_FluctAnal_2_50_1_logi_prop_r1(y, size, 1, "rsrangefit");
+void SC_FluctAnal_2_rsrangefit_50_1_logi_prop_r1(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output){
+    static double y[DATA_SIZE];
+    generate(input,y);
+    SC_FluctAnal_2_50_1_logi_prop_r1(y, size, 1, "rsrangefit",output);
 }
 
 
 
-double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int size, const int lag, const char how[])
+void SC_FluctAnal_2_50_1_logi_prop_r1(double y[], const int size, const int lag, const char how[], hls::stream<data_t> &output)
 {
     // // NaN check
     // for(int i = 0; i < size; i++)
@@ -1692,7 +1713,7 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int siz
     int tau[50];
     for(int i = 0; i < nTauSteps; i++)
     {
-        tau[i] = round(exp(linLow + i*tauStep));
+        tau[i] = round(exp(linLow + i*tauStep),2);
     }
     
     // check for uniqueness, use ascending order
@@ -1711,10 +1732,11 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int siz
         }
     }
     
+    // tau value lies from 5 to 64 for size =128
     // fewer than 12 points -> leave.
     if(nTau < 12){
-        return 0;
-    }
+        output << 0;
+    }else{
     
     int sizeCS = size/lag;
     double yCS[DATA_SIZE];
@@ -1737,7 +1759,7 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int siz
             printf("yCS[%i]=%1.3f\n", i, yCS[i]);
          */
     }
-    
+    bool check = false;
     //for each value of tau, cut signal into snippets of length tau, detrend and
     
     // first generate a support for regression (detrending)
@@ -1748,7 +1770,7 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int siz
     }
     //first
     // iterate over taus, cut signal, detrend and save amplitude of remaining signal
-    double F[DATA_SIZE];
+    double F[50];
     for(int i = 0; i < nTau; i++)
     {
         int nBuffer = sizeCS/tau[i];
@@ -1763,8 +1785,12 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int siz
             
             //printf("%i th buffer\n", j);
             
-            linreg(tau[i], xReg, yCS+j*tau[i], &m, &b);
-            
+            int k1 = linreg(tau[i], xReg, yCS+j*tau[i], &m, &b);
+            if ((k1==1 || m==0 || b==0)&& check==false){
+                check = true;
+                output << 0;
+            }
+            if (check==false){
             
             for(int k = 0; k < tau[i]; k++)
             {
@@ -1780,47 +1806,57 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int siz
                     F[i] += buffer[k]*buffer[k];
                 }
             }
-            else{
-                return 0.0;
             }
         }
         
+        if (check==false){
         if (simple_strcmp(how, "rsrangefit") == 0) {
             F[i] = sqrt(F[i]/nBuffer);
         }
         else if (simple_strcmp(how, "dfa") == 0) {
             F[i] = sqrt(F[i]/(nBuffer*tau[i]));
         }
-        //printf("F[%i]=%1.3f\n", i, F[i]);
-        
-    
+        }
         
     }
-    
-    double logtt[DATA_SIZE];
-    double logFF[DATA_SIZE];
+    double logtt[50];
+    double logFF[50];
     int ntt = nTau;
     
+    if(check==false){
     for (int i = 0; i < nTau; i++)
     {
         logtt[i] = log(tau[i]);
-        logFF[i] = log(F[i]);
+        if(F[i]==0){
+            logFF[i] = 1;
+        }
+        else{
+            logFF[i] = log(F[i]);
+        }
+    }
     }
     
     int minPoints = 6;
     int nsserr = ntt - 2*minPoints + 1;
-    double sserr[DATA_SIZE];
-    double buffer[DATA_SIZE];
+    double sserr[50];
+    double buffer[50];
+    
     for (int i = minPoints; i < ntt - minPoints + 1; i++)
     {
-        // this could be done with less variables of course
         double m1 = 0.0, b1 = 0.0;
         double m2 = 0.0, b2 = 0.0;
         
         sserr[i - minPoints] = 0.0;
         
-        linreg(i, logtt, logFF, &m1, &b1);
-        linreg(ntt-i+1, logtt+i-1, logFF+i-1, &m2, &b2);
+        int k2= linreg(i, logtt, logFF, &m1, &b1);
+        int k3= linreg(ntt-i+1, logtt+i-1, logFF+i-1, &m2, &b2);
+
+        if ((k2==1 || k3==1 || m1==0 || b1==0 || m2==0 || b2==0) && check == false){
+            check = true;
+            output << 0 ;
+        }
+
+        if (check==false){
         
         for(int j = 0; j < i; j ++)
         {
@@ -1835,9 +1871,9 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int siz
         }
         
         sserr[i - minPoints] += norm_(buffer, ntt-i+1);
-        
+        }
     }
-    
+    if(check==false){
     double firstMinInd = 0.0;
     double minimum = min_(sserr, nsserr);
     for(int i = 0; i < nsserr; i++)
@@ -1849,9 +1885,11 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[DATA_SIZE], const int siz
         }
     }
     
-   
-    return (firstMinInd+1)/ntt;
-    
+    double z1;
+    z1 = (firstMinInd+1)/ntt;
+    output << z1;
+    }
+  }
 }
 
 
@@ -1923,7 +1961,10 @@ int linreg(const int n, const double x[], const double y[], double* m, double* b
 
 
 
-double DN_HistogramMode_5(const double y[DATA_SIZE], const int size) {
+void DN_HistogramMode_5(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output) {
+
+    static double y[DATA_SIZE];
+    generate(input,y);
     double maxCount = 0;
     int numMaxs = 1;
     double out = 0;
@@ -1948,10 +1989,12 @@ double DN_HistogramMode_5(const double y[DATA_SIZE], const int size) {
     }
     out = out / numMaxs;  // Average mid-point of the mode bin(s)
 
-    return out;
+    output<<out;
 }
 
-double DN_HistogramMode_10(const double y[DATA_SIZE], const int size) {
+void DN_HistogramMode_10(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output) {
+    static double y[DATA_SIZE];
+    generate(input,y);
     double maxCount = 0;
     int numMaxs = 1;
     double out = 0;
@@ -1975,7 +2018,7 @@ double DN_HistogramMode_10(const double y[DATA_SIZE], const int size) {
     }
     out = out / numMaxs;  // Average mid-point of the mode bin(s)
 
-    return out;
+    output << out;
 }
 
 
@@ -2005,9 +2048,10 @@ int histcounts(const double y[DATA_SIZE], const int size, int nBins, int binCoun
 
 
 
-double SB_TransitionMatrix_3ac_sumdiagcov(double y[], int size)
+void SB_TransitionMatrix_3ac_sumdiagcov(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output, int tau)
 {
-    
+    static double y[DATA_SIZE];
+    generate(input,y);
     // NaN and const check
     int constant = 1;
     for(int i = 0; i < size; i++)
@@ -2026,7 +2070,7 @@ double SB_TransitionMatrix_3ac_sumdiagcov(double y[], int size)
     
     const int numGroups = 3;
     
-    int tau = co_firstzero(y, size, size);
+    // int tau = co_firstzero(y, size, size);
     
     double yFilt[DATA_SIZE];
     
@@ -2157,7 +2201,7 @@ double SB_TransitionMatrix_3ac_sumdiagcov(double y[], int size)
     }
     
     
-    return sumdiagcov;
+    output << sumdiagcov;
     
     
 }
@@ -2182,7 +2226,7 @@ double cov(const double x[], const double y[], const int size){
 
 
 
-double SB_MotifThree_quantile_hh(const double y[], const int size)
+void SB_MotifThree_quantile_hh(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output)
 {
     // NaN check
     // for(int i = 0; i < size; i++)
@@ -2192,7 +2236,8 @@ double SB_MotifThree_quantile_hh(const double y[], const int size)
     //         return NAN;
     //     }
     // }
-    
+    static double y[DATA_SIZE];
+    generate(input,y);
     int tmp_idx, r_idx;
     int dynamic_idx;
     int alphabet_size = 3;
@@ -2324,7 +2369,7 @@ double SB_MotifThree_quantile_hh(const double y[], const int size)
     // free(out2);
     
     
-    return hh;
+    output << hh;
     
 }
 
@@ -2450,7 +2495,7 @@ int simple_strcmp(const char *str1, const char *str2) {
 }
 
 
-double CO_HistogramAMI_even_2_5(const double y[], const int size)
+void CO_HistogramAMI_even_2_5(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output)
 {
     
     // // NaN check
@@ -2461,6 +2506,8 @@ double CO_HistogramAMI_even_2_5(const double y[], const int size)
     //         return NAN;
     //     }
     // }
+    static double y[DATA_SIZE];
+    generate(input,y);
     
     const int tau = 2;
     const int numBins = 5;
@@ -2578,7 +2625,7 @@ double CO_HistogramAMI_even_2_5(const double y[], const int size)
         }
     }
     
-    return ami;
+    output << ami;
 }
 
 
@@ -2624,7 +2671,7 @@ void histcount_edges(const double y[], const int size, const double binEdges[], 
 }
 
 
-double CO_Embed2_Dist_tau_d_expfit_meandiff(double y[], const int size)
+void CO_Embed2_Dist_tau_d_expfit_meandiff(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output,int tau)
 {
     
     // // NaN check
@@ -2635,8 +2682,10 @@ double CO_Embed2_Dist_tau_d_expfit_meandiff(double y[], const int size)
     //         return NAN;
     //     }
     // }
+    static double y[DATA_SIZE];
+    generate(input,y);
     
-    int tau = co_firstzero(y, size, size);
+    // int tau = co_firstzero(y, size, size);
     
     //printf("co_firstzero ran\n");
     
@@ -2677,8 +2726,8 @@ double CO_Embed2_Dist_tau_d_expfit_meandiff(double y[], const int size)
     
     int nBins = num_bins_auto(d, size-tau-1);
     if (nBins == 0){
-        return 0;
-    }
+        output<<0;
+    }else{
     int histCounts[DATA_SIZE];
     double binEdges[DATA_SIZE];
     histcounts_preallocated(d, size-tau-1, nBins, histCounts, binEdges);
@@ -2724,7 +2773,9 @@ double CO_Embed2_Dist_tau_d_expfit_meandiff(double y[], const int size)
     //printf("reached free statements\n");
     
     
-    return out;
+    output<<out;
+    
+    }
     
 }
 
@@ -2862,72 +2913,92 @@ double round(double var, int precision) {
 }
 
 
-double CO_f1ecac(double window[DATA_SIZE])
+void CO_f1ecac(hls::stream<data_t> &input, hls::stream<data_t> &output)
 {
-    
-    double autocorrs[2 * DATA_SIZE];
-    co_autocorrs(window, autocorrs);
-    double k[DATA_SIZE];
-    for(int i=0; i<DATA_SIZE;i++){
-        k[i] = autocorrs[i]/autocorrs[0];
-    }
-    std::cout << "L jgjg" << k[0] << std::endl;
-    std::cout << "L jgjg" << k[1] << std::endl;
-    std::cout << "L jgjg" << k[2] << std::endl;
-    std::cout << "L jgjg" << k[3] << std::endl;
+    static double y[DATA_SIZE];
+    generate(input,y);
+    double autocor[2*DATA_SIZE];
+    co_autocorrscopy(y,autocor);
+    // double k[2*DATA_SIZE];
+    // for(int j=0;j<DATA_SIZE;j++){
+    //     k[j] = round(autocor[j],2);
+    // }
+    bool check = false;
     // threshold to cross
     double thresh = 0.36;
     double out = (double)DATA_SIZE;
-    std::cout << "KERNEL jgjg" << out << std::endl;
     for(int i = 0; i < DATA_SIZE-2; i++){
         // printf("i=%d autocorrs_i=%1.3f\n", i, autocorrs[i]);
-        if ( round(k[i+1],2) < thresh ){
-            double m = round(k[i+1],2) - round(k[i],2);
+        if ( round(autocor[i+1],2) < thresh && check==false){
+            double m = round(autocor[i+1],2) - round(autocor[i],2);
             if (m == 0) continue; 
-            double dy = thresh - round(k[i],2);
+            check = true;
+            double dy = thresh - round(autocor[i],2);
             double dx = dy/m;
-            out = ((double)i) + round(dx,2);
+            out = round(((double)i) + round(dx,2),2);
             // printf("thresh=%1.3f AC(i)=%1.3f AC(i-1)=%1.3f m=%1.3f dy=%1.3f dx=%1.3f out=%1.3f\n", thresh, autocorrs[i], autocorrs[i-1], m, dy, dx, out);
-            return out;
         }
     }
     
-    
-    return out;
-    
+    output<<out;
 }
 
-double FC_LocalSimple_mean1_tauresrat(double y[], const int size){
-    return FC_LocalSimple_mean_tauresrat(y, size, 1);
-}
-int co_firstzero( double y[], int size, int maxtau) {
-    double autocorrs[2*DATA_SIZE];
-    
-    co_autocorrs(y, autocorrs);
-    int zerocrossind = 0;
-    while(autocorrs[zerocrossind] > 0 && zerocrossind < maxtau)
-    {
-        zerocrossind += 1;
+void FC_LocalSimple_mean1_tauresrat(double resAC1stZ,  double yAC1stZ, hls::stream<data_t> &output){
+    if(yAC1stZ != 0 ){
+        output << resAC1stZ / yAC1stZ;
     }
-    std::cout << "kerneladv"<<zerocrossind;
-    return zerocrossind;
-}
-
-double FC_LocalSimple_mean_tauresrat(double y[], int size, int train_length) {
-    double static_res[DATA_SIZE];
-    for (int i = 0; i < size - train_length; ++i) {
-        double yest = 0;
-        for (int j = 0; j < train_length; ++j) {
-            yest += y[i + j];
-        }
-        yest /= train_length;
-        static_res[i] = y[i + train_length] - yest;
+    else{
+        output << 0;
     }
-
-    double resAC1stZ = co_firstzero(static_res, size - train_length, size - train_length);
-    double yAC1stZ = co_firstzero(y, size, size);
-    return yAC1stZ != 0 ? resAC1stZ / yAC1stZ : 0; // Avoid division by zero
 }
+// int co_firstzero( double autocor[2*DATA_SIZE], int size, int maxtau) {
+//     int zerocrossind = 0;
+//     while(autocor[zerocrossind] > 0 && zerocrossind < maxtau)
+//     {
+//         zerocrossind += 1;
+//     }
+//     return zerocrossind;
+// }
+
+// void FC_LocalSimple_mean1_tauresrat(hls::stream<data_t> &input, const int size, hls::stream<data_t> &output){
+//     static double y[DATA_SIZE];
+//     generate(input,y);
+//     FC_LocalSimple_mean_tauresrat(y, size, 1, output);
+// }
+// int co_firstzero( double y[], int size, int maxtau) {
+//     double autocorrs[2*DATA_SIZE];
+    
+//     co_autocorrscopy(y, autocorrs);
+//     int zerocrossind = 0;
+//     while(autocorrs[zerocrossind] > 0 && zerocrossind < maxtau)
+//     {
+//         zerocrossind += 1;
+//     }
+//     std::cout << "kerneladv"<<zerocrossind;
+//     return zerocrossind;
+// }
+
+// void FC_LocalSimple_mean_tauresrat(double y[], int size, int train_length, hls::stream<data_t> &output) {
+//     double static_res[DATA_SIZE];
+//     for (int i = 0; i < size - train_length; ++i) {
+//         double yest = 0;
+//         for (int j = 0; j < train_length; ++j) {
+//             yest += y[i + j];
+//         }
+//         yest /= train_length;
+//         static_res[i] = y[i + train_length] - yest;
+//     }
+
+//     double resAC1stZ = co_firstzero(static_res, size - train_length, size - train_length);
+//     double yAC1stZ = co_firstzero(y, size, size);
+//     if(yAC1stZ != 0 ){
+//         output << resAC1stZ / yAC1stZ;
+//     }
+//     else{
+//         output << 0;
+//     }
+// }
+
 
 
 double mean1(double a[])
@@ -2940,9 +3011,9 @@ double mean1(double a[])
     return m;
 }
 
-void dot_multiply(cmplx_type a[DATA_SIZE], cmplx_type b[DATA_SIZE])
+void dot_multiply(cmplx_type a[2*DATA_SIZE], cmplx_type b[2*DATA_SIZE])
 {
-    for (int i = 0; i < DATA_SIZE; i++) {
+    for (int i = 0; i < 2*DATA_SIZE; i++) {
         cmplx_type a_conj; 
         CMPXCONJ(a_conj, a[i]);
         CMPXMUL(b[i], a[i], a_conj);
@@ -2958,8 +3029,11 @@ cmplx_type cmpxdiv(cmplx_type a, cmplx_type b) {
     return result;
 }
 
-void co_autocorrs(double y[DATA_SIZE], double z[DATA_SIZE])
-{   
+void co_autocorrs(hls::stream<data_t> &input3, double z[2*DATA_SIZE])
+{
+    #pragma HLS INLINE off
+    static double y[DATA_SIZE];
+    generate(input3,y);
     std::cout << "AUTO COR" << std::endl; 
     double m, nFFT;
     m = mean1(y);
@@ -2979,41 +3053,59 @@ void co_autocorrs(double y[DATA_SIZE], double z[DATA_SIZE])
     pease_fft(input, output);
     dot_multiply(output, input);
     pease_fft(input, output);
-
-    cmplx_type divisor = output[0];
     
     for (int i = 0; i < 2 * DATA_SIZE; i++) {
-        input[i] = cmpxdiv(divisor, output[i]); // F[i] / divisor;
+  
+        z[i] = output[i].real/output[0].real;
+    }
+}
+
+void co_autocorrscopy(double y[], double z[2*DATA_SIZE])
+{
+    #pragma HLS INLINE off
+    std::cout << "AUTO COR" << std::endl; 
+    double m, nFFT;
+    m = mean1(y);
+    
+    cmplx_type input[2 * DATA_SIZE];
+    cmplx_type output[2 * DATA_SIZE];
+    
+    for (int i = 0; i < DATA_SIZE; i++) {
+        input[i].real = y[i] - m;
+        input[i].imag = 0.0; 
+    }
+    for (int i = DATA_SIZE; i < 2 * DATA_SIZE; i++) {
+        input[i].real = 0.0;
+        input[i].imag = 0.0; 
     }
 
-
+    pease_fft(input, output);
+    dot_multiply(output, input);
+    pease_fft(input, output);
+    
     for (int i = 0; i < 2 * DATA_SIZE; i++) {
   
-        z[i] = input[i].real;
+        z[i] = output[i].real/output[0].real;
     }
-
 }
 
 
-int CO_FirstMin_ac(double window[DATA_SIZE])
+void CO_FirstMin_ac(hls::stream<data_t> &input, hls::stream<data_t> &output)
 {
-    // Removed NaN check
-    double autocorrs[2 * DATA_SIZE];
-    co_autocorrs(window, autocorrs);
-    std::cout << "KERNEL jgjg" << autocorrs[0] << std::endl;
-    std::cout << "KERNEL jgjg" << autocorrs[1] << std::endl;
-    std::cout << "KERNEL jgjg" << autocorrs[2] << std::endl;
-    std::cout << "KERNEL jgjg" << autocorrs[3] << std::endl;
+    static double y[DATA_SIZE];
+    generate(input,y);
+    double autocor[2*DATA_SIZE];
+    co_autocorrscopy(y,autocor);
     int minInd = DATA_SIZE;
     for(int i = 1; i < DATA_SIZE-1; i++)
     {
-        if(autocorrs[i] < autocorrs[i-1] && autocorrs[i] < autocorrs[i+1])
+        if(autocor[i] < autocor[i-1] && autocor[i] < autocor[i+1])
         {
             minInd = i;
             break;
         }
     }    
-    return minInd;
+    output << minInd;
     
 }
 
@@ -3028,142 +3120,330 @@ void generate(hls::stream<data_t> &input, data_t y[DATA_SIZE]) {
     }
 }
 
-void replicate_stream(hls::stream<data_t> &input, hls::stream<data_t> &input1, hls::stream<data_t> &input2, hls::stream<data_t> &input3) {
+void replicate_stream(
+hls::stream<data_t> &input, 
+hls::stream<data_t> &input1, 
+hls::stream<data_t> &input2, 
+hls::stream<data_t> &input3, 
+hls::stream<data_t> &input4, 
+hls::stream<data_t> &input5, 
+hls::stream<data_t> &input6, 
+hls::stream<data_t> &input7, 
+hls::stream<data_t> &input8, 
+hls::stream<data_t> &input9, 
+hls::stream<data_t> &input10, 
+hls::stream<data_t> &input11, 
+hls::stream<data_t> &input12, 
+hls::stream<data_t> &input13, 
+hls::stream<data_t> &input14, 
+hls::stream<data_t> &input15, 
+hls::stream<data_t> &input16, 
+hls::stream<data_t> &input17, 
+hls::stream<data_t> &input18,
+hls::stream<data_t> &input19, 
+hls::stream<data_t> &input20,
+hls::stream<data_t> &input21
+// hls::stream<data_t> &input22
+) {
     while (!input.empty()) {
         data_t val = input.read();
         input1.write(val);
         input2.write(val);
         input3.write(val);
+        input4.write(val);
+        input5.write(val);
+        input6.write(val);
+        input7.write(val);
+        input8.write(val);
+        input9.write(val);
+        input10.write(val);
+        input11.write(val);
+        input12.write(val);
+        input13.write(val);
+        input14.write(val);
+        input15.write(val);
+        input16.write(val);
+        input17.write(val);
+        input18.write(val);
+        input19.write(val);
+        input20.write(val);
+        input21.write(val);
+        // input22.write(val);
     }
 }
 
 
 
+// void autocorrsfunctions(hls::stream<data_t> &input18, hls::stream<data_t> &input19, hls::stream<data_t> &input20, hls::stream<data_t> &input21, const int size, hls::stream<data_t> &output18, hls::stream<data_t> &output19, hls::stream<data_t> &output20, hls::stream<data_t> &output21, hls::stream<data_t> &output22){
+//     double autocorrs1[2 * DATA_SIZE];
+//     co_autocorrs(input18, autocorrs1);
+//     double k1 = co_firstzero(autocorrs1,DATA_SIZE,DATA_SIZE);
+//     int kint = k1;
+//     static double y2[DATA_SIZE];
+//     generate(input19,y2);
+//     double static_res1[DATA_SIZE];
+//     for (int i = 0; i < DATA_SIZE - 1; ++i) {
+//         double yest = 0;
+//         for (int j = 0; j < 1; ++j) {
+//             yest += y2[i + j];
+//         }
+//         yest /= 1;
+//         static_res1[i] = y2[i + 1] - yest;
+//     }
+//     double autocorrs2[2 * DATA_SIZE];
+//     co_autocorrscopy(static_res1, autocorrs2);
+//     double k2 = co_firstzero(autocorrs2, DATA_SIZE-1, DATA_SIZE-1);
+    
+
+//     #pragma DATAFLOW
+//     CO_FirstMin_ac(output18,autocorrs1);
+//     CO_f1ecac(output19,autocorrs1);
+//     FC_LocalSimple_mean1_tauresrat(k2,k1,output20);
+//     CO_Embed2_Dist_tau_d_expfit_meandiff(input20,DATA_SIZE,output21,kint);
+//     SB_TransitionMatrix_3ac_sumdiagcov(input21,DATA_SIZE,output22,kint);
+
+// }
+
+
+
+
+
+
 void computation(
-        hls::stream<data_t> &input,  hls::stream<data_t> &outp1, hls::stream<data_t> &outp2, hls::stream<data_t> &outp3
-        // data_t window[DATA_SIZE], data_t *outp1
-        // data_t *outp2, data_t *outp3, data_t *outp4, data_t *outp5, data_t *outp6, data_t *outp7, data_t *outp8, data_t *outp9, data_t *outp10, data_t *outp11, data_t *outp12, data_t *outp13, data_t *outp14, data_t *outp15, data_t *outp16, data_t *outp17, data_t *outp18, data_t *outp19, data_t *outp20, data_t *outp21, data_t *outp22
+        hls::stream<data_t> &input,  
+        hls::stream<data_t> &outp1, 
+        hls::stream<data_t> &outp2,
+        hls::stream<data_t> &outp3, 
+        hls::stream<data_t> &outp4, 
+        hls::stream<data_t> &outp5, 
+        hls::stream<data_t> &outp6, 
+        hls::stream<data_t> &outp7, 
+        hls::stream<data_t> &outp8, 
+        hls::stream<data_t> &outp9, 
+        hls::stream<data_t> &outp10, 
+        hls::stream<data_t> &outp11, 
+        hls::stream<data_t> &outp12, 
+        hls::stream<data_t> &outp13, 
+        hls::stream<data_t> &outp14, 
+        hls::stream<data_t> &outp15, 
+        hls::stream<data_t> &outp16, 
+        hls::stream<data_t> &outp17, 
+        hls::stream<data_t> &outp18, 
+        hls::stream<data_t> &outp19,
+        hls::stream<data_t> &outp20, 
+        hls::stream<data_t> &outp21, 
+        hls::stream<data_t> &outp22
     ) {
 
     hls::stream<data_t> input1;
     hls::stream<data_t> input2;
     hls::stream<data_t> input3;
+    hls::stream<data_t> input4;
+    hls::stream<data_t> input5;
+    hls::stream<data_t> input6;
+    hls::stream<data_t> input7;
+    hls::stream<data_t> input8;
+    hls::stream<data_t> input9;
+    hls::stream<data_t> input10;
+    hls::stream<data_t> input11;
+    hls::stream<data_t> input12;
+    hls::stream<data_t> input13;
+    hls::stream<data_t> input14;
+    hls::stream<data_t> input15;
+    hls::stream<data_t> input16;
+    hls::stream<data_t> input17;
+    hls::stream<data_t> input18;
+    hls::stream<data_t> input19;
+    hls::stream<data_t> input20;
+    hls::stream<data_t> input21;
+    // hls::stream<data_t> input22;
 
-    replicate_stream(input, input1, input2, input3);
+    replicate_stream(
+        input, 
+        input1, 
+        input2,
+        input3,
+        input4, 
+        input5,
+        input6, 
+        input7, 
+        input8,
+        input9, 
+        input10, 
+        input11, 
+        input12,
+        input13, 
+        input14,
+        input15,
+        input16,
+        input17,
+        input18, 
+        input19, 
+        input20,
+        input21
+        // input22
+    );
+    
+ 
     #pragma DATAFLOW
     MD_hrv_classic_pnn40(input1,DATA_SIZE,outp1);
     DN_OutlierInclude_p_001_mdrmd(input2,DATA_SIZE,outp2);
     IN_AutoMutualInfoStats_40_gaussian_fmmi(input3,DATA_SIZE,outp3);
-    // *outp4 = CO_FirstMin_ac(window);
-    // *outp5 = FC_LocalSimple_mean1_tauresrat(window,DATA_SIZE);
-    // *outp6 = CO_f1ecac(window);
-    // *outp7 = CO_Embed2_Dist_tau_d_expfit_meandiff(window,DATA_SIZE);
-    // *outp8 = CO_HistogramAMI_even_2_5(window,DATA_SIZE);
-    // *outp9 = SB_MotifThree_quantile_hh(window,DATA_SIZE);
-    // *outp10 = SB_TransitionMatrix_3ac_sumdiagcov(window,DATA_SIZE);
-    // *outp11 = DN_HistogramMode_5(window,DATA_SIZE);
-    // *outp12 = DN_HistogramMode_10(window,DATA_SIZE);
-    // *outp13 = SC_FluctAnal_2_rsrangefit_50_1_logi_prop_r1(window,DATA_SIZE);
-    // *outp14 = SC_FluctAnal_2_dfa_50_1_2_logi_prop_r1(window,DATA_SIZE);
-    // *outp15 = PD_PeriodicityWang_th0_01(window,DATA_SIZE);
-    // *outp16 = FC_LocalSimple_mean3_stderr(window,DATA_SIZE);
-    // *outp17 = SP_Summaries_welch_rect_area_5_1(window,DATA_SIZE);
-    // *outp18 = SP_Summaries_welch_rect_centroid(window,DATA_SIZE);
-    // *outp19 = DN_OutlierInclude_n_001_mdrmd(window,DATA_SIZE);
-    // *outp20 = SB_BinaryStats_diff_longstretch0(window,DATA_SIZE);
-    // *outp21 = SB_BinaryStats_mean_longstretch1(window,DATA_SIZE);
-    // *outp22 = CO_trev_1_num(window,DATA_SIZE);
+    SP_Summaries_welch_rect_area_5_1(input4,DATA_SIZE,outp4);
+    SP_Summaries_welch_rect_centroid(input5,DATA_SIZE,outp5);
+    CO_HistogramAMI_even_2_5(input6,DATA_SIZE,outp6);
+    SB_MotifThree_quantile_hh(input7,DATA_SIZE,outp7);
+    DN_HistogramMode_5(input8,DATA_SIZE,outp8);
+    DN_HistogramMode_10(input9,DATA_SIZE,outp9);
+    SC_FluctAnal_2_rsrangefit_50_1_logi_prop_r1(input10,DATA_SIZE,outp10);
+    SC_FluctAnal_2_dfa_50_1_2_logi_prop_r1(input11,DATA_SIZE,outp11);
+    PD_PeriodicityWang_th0_01(input12,DATA_SIZE,outp12);
+    FC_LocalSimple_mean3_stderr(input13,DATA_SIZE,outp13);
+    DN_OutlierInclude_n_001_mdrmd(input14,DATA_SIZE,outp14);
+    SB_BinaryStats_diff_longstretch0(input15,DATA_SIZE,outp15);
+    SB_BinaryStats_mean_longstretch1(input16,DATA_SIZE,outp16);
+    CO_trev_1_num(input17,DATA_SIZE,outp17);
+    double autocor[2 * DATA_SIZE];
+    co_autocorrs(input18, autocor);
+    bool check1 = false;
+    int minInd = DATA_SIZE;
+    bool check2 = false;
+    double thresh = 0.36;
+    double out = (double)DATA_SIZE;
+    int zerocrossind = 0;
+    bool check3 = false;
+    for (int i = 0; i < DATA_SIZE-1; i++){
+        if (check1==true && check2==true && check3==true){
+            break;
+        }
+        if((i > 0 && autocor[i] < autocor[i-1] && autocor[i] < autocor[i+1]) && check1==false)
+        {
+            check1 = true;
+            minInd = i;
+        }
+
+        if (i < DATA_SIZE-1 && round(autocor[i+1],2) < thresh && check2==false){
+            double m = round(autocor[i+1],2) - round(autocor[i],2);
+            if (m == 0) continue; 
+            check2 = true;
+            double dy = thresh - round(autocor[i],2);
+            double dx = dy/m;
+            out = round(((double)i) + round(dx,2),2);
+        }
+        if((autocor[i] <= 0 || i >=DATA_SIZE) && check3==false)
+        {
+            check3 = true;
+            zerocrossind = i;
+        }
+    }
+    outp18<<minInd;
+    outp19<<out;
+    CO_Embed2_Dist_tau_d_expfit_meandiff(input19,DATA_SIZE,outp20,zerocrossind);
+    SB_TransitionMatrix_3ac_sumdiagcov(input20,DATA_SIZE,outp21,zerocrossind);
+    static double y2[DATA_SIZE];
+    bool check4 = false;
+    double k2 = 0;
+    generate(input21,y2);
+    double static_res1[DATA_SIZE];
+    for (int i = 0; i < DATA_SIZE - 1; ++i) {
+        double yest = 0;
+        for (int j = 0; j < 1; ++j) {
+            yest += y2[i + j];
+        }
+        yest /= 1;
+        static_res1[i] = y2[i + 1] - yest;
+    }
+    double autocorrs2[2 * DATA_SIZE];
+    co_autocorrscopy(static_res1, autocorrs2);
+    for (int i = 0; i < DATA_SIZE-1; i++){
+        if((autocorrs2[i] <= 0 || i >=DATA_SIZE-1) && check4==false)
+        {
+            check4 = true;
+            k2 = i;
+        }
+    }
+    double k1 = zerocrossind;
+    FC_LocalSimple_mean1_tauresrat(k2,k1,outp22);
+
 }
 
 
 
-extern "C" void krnl(hls::stream<data_t> &input, hls::stream<data_t> &outp1, hls::stream<data_t> &outp2, hls::stream<data_t> &outp3) {
+
+extern "C" void krnl(hls::stream<data_t> &input, 
+hls::stream<data_t> &outp1, 
+hls::stream<data_t> &outp2,
+hls::stream<data_t> &outp3, 
+hls::stream<data_t> &outp4, 
+hls::stream<data_t> &outp5,
+hls::stream<data_t> &outp6, 
+hls::stream<data_t> &outp7, 
+hls::stream<data_t> &outp8, 
+hls::stream<data_t> &outp9, 
+hls::stream<data_t> &outp10, 
+hls::stream<data_t> &outp11, 
+hls::stream<data_t> &outp12, 
+hls::stream<data_t> &outp13, 
+hls::stream<data_t> &outp14, 
+hls::stream<data_t> &outp15, 
+hls::stream<data_t> &outp16, 
+hls::stream<data_t> &outp17, 
+hls::stream<data_t> &outp18, 
+hls::stream<data_t> &outp19,
+hls::stream<data_t> &outp20, 
+hls::stream<data_t> &outp21,
+hls::stream<data_t> &outp22
+) {
 
     #pragma HLS INTERFACE mode=axis port=input
     #pragma HLS INTERFACE mode=axis port=outp1
     #pragma HLS INTERFACE mode=axis port=outp2
     #pragma HLS INTERFACE mode=axis port=outp3
-    // static data_t window[DATA_SIZE];
-    // data_t outp1;
-    // data_t outp2;
-    // data_t outp3;
-    // data_t outp4;
-    // data_t outp5;
-    // data_t outp6;
-    // data_t outp7;
-    // data_t outp8;
-    // data_t outp9;
-    // data_t outp10;
-    // data_t outp11;
-    // data_t outp12;
-    // data_t outp13;
-    // data_t outp14;
-    // data_t outp15;
-    // data_t outp16;
-    // data_t outp17;
-    // data_t outp18;
-    // data_t outp19;
-    // data_t outp20;
-    // data_t outp21;
-    // data_t outp22;
-    // static int w = 0; 
+    #pragma HLS INTERFACE mode=axis port=outp4
+    #pragma HLS INTERFACE mode=axis port=outp5
+    #pragma HLS INTERFACE mode=axis port=outp6
+    #pragma HLS INTERFACE mode=axis port=outp7
+    #pragma HLS INTERFACE mode=axis port=outp8
+    #pragma HLS INTERFACE mode=axis port=outp9
+    #pragma HLS INTERFACE mode=axis port=outp10
+    #pragma HLS INTERFACE mode=axis port=outp11
+    #pragma HLS INTERFACE mode=axis port=outp12
+    #pragma HLS INTERFACE mode=axis port=outp13
+    #pragma HLS INTERFACE mode=axis port=outp14
+    #pragma HLS INTERFACE mode=axis port=outp15
+    #pragma HLS INTERFACE mode=axis port=outp16
+    #pragma HLS INTERFACE mode=axis port=outp17
+    #pragma HLS INTERFACE mode=axis port=outp18
+    #pragma HLS INTERFACE mode=axis port=outp19
+    #pragma HLS INTERFACE mode=axis port=outp20
+    #pragma HLS INTERFACE mode=axis port=outp21
+    #pragma HLS INTERFACE mode=axis port=outp22
 
-    // /* Reading from DDR*/
-    // for (int i = 0; i < DATA_SIZE; i++) {
-    //     // #pragma HLS UNROLL
-    //     window[i] = input[i];
-    // }
+    computation(
+        input, 
+        outp1, 
+        outp2,
+        outp3,
+        outp4,
+        outp5,
+        outp6,
+        outp7,
+        outp8,
+        outp9, 
+        outp10, 
+        outp11, 
+        outp12, 
+        outp13, 
+        outp14, 
+        outp15, 
+        outp16, 
+        outp17, 
+        outp18, 
+        outp19,
+        outp20,
+        outp21,
+        outp22
+    );
 
-    computation(input, outp1, outp2, outp3);
-
-
-    
-    /* Feature Extraction */
-    // result = CO_FirstMin_ac(window);
-    // result = FC_LocalSimple_mean1_tauresrat(window,DATA_SIZE);
-    // result = CO_f1ecac(window);
-    // result = CO_Embed2_Dist_tau_d_expfit_meandiff(window,DATA_SIZE);
-    // result = CO_HistogramAMI_even_2_5(window,DATA_SIZE);
-    // result = SB_MotifThree_quantile_hh(window,DATA_SIZE);
-    // result = SB_TransitionMatrix_3ac_sumdiagcov(window,DATA_SIZE);
-    // result = DN_HistogramMode_5(window,DATA_SIZE);
-    // result = DN_HistogramMode_10(window,DATA_SIZE);
-    // result =SC_FluctAnal_2_rsrangefit_50_1_logi_prop_r1(window,DATA_SIZE);
-    // result =SC_FluctAnal_2_dfa_50_1_2_logi_prop_r1(window,DATA_SIZE);
-    // result =PD_PeriodicityWang_th0_01(window,DATA_SIZE);
-    // result =FC_LocalSimple_mean3_stderr(window,DATA_SIZE);
-    // result =SP_Summaries_welch_rect_area_5_1(window,DATA_SIZE);
-    // result =SP_Summaries_welch_rect_centroid(window,DATA_SIZE);
-    // result =DN_OutlierInclude_n_001_mdrmd(window,DATA_SIZE);
-    // result =DN_OutlierInclude_p_001_mdrmd(window,DATA_SIZE);
-    // result =SB_BinaryStats_diff_longstretch0(window,DATA_SIZE);
-    // result = SB_BinaryStats_mean_longstretch1(window,DATA_SIZE);
-    // result = IN_AutoMutualInfoStats_40_gaussian_fmmi(window,DATA_SIZE);
-    // result = CO_trev_1_num(window,DATA_SIZE);
-    // result = MD_hrv_classic_pnn40(window,DATA_SIZE);
-    /* Writing to DDR */
-    // output[0] = result;
-
-    // output[0] = outp1;
-    // output[1] = outp2;
-    // output[2] = outp3;
-    // output[3] = outp4;
-    // output[4] = outp5;
-    // output[5] = outp6;
-    // output[6] = outp7;
-    // output[7] = outp8;
-    // output[8] = outp9;
-    // output[9] = outp10;
-    // output[10] = outp11;
-    // output[11] = outp12;
-    // output[12] = outp13;
-    // output[13] = outp14;
-    // output[14] = outp15;
-    // output[15] = outp16;
-    // output[16] = outp17;
-    // output[17] = outp18;
-    // output[18] = outp19;
-    // output[19] = outp20;
-    // output[20] = outp21;
-    // output[21] = outp22;
 }
+
