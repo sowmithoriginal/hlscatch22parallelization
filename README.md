@@ -5,6 +5,6 @@ This github is a test bed to test teh Catch22 feature extractors.
 ## Installation 
 
 ```
-git clone https://github.com/pyuvaraj37/hls_catch22.git
-cd hls_catch22
+git clone https://github.com/sowmithoriginal/hlscatch22parallelization.git
+cd hlscatch22parallelization
 ```# fpga-auto-cor
