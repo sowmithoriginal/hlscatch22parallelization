@@ -1626,7 +1626,7 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[], const int size, const 
     int tau[50];
     for(int i = 0; i < nTauSteps; i++)
     {
-        tau[i] = round(exp(linLow + i*tauStep));
+        tau[i] = round(exp(linLow + i*tauStep),2);
     }
     
     // check for uniqueness, use ascending order
@@ -1697,7 +1697,10 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[], const int size, const 
             
             //printf("%i th buffer\n", j);
             
-            linreg(tau[i], xReg, yCS+j*tau[i], &m, &b);
+            int k1 = linreg(tau[i], xReg, yCS+j*tau[i], &m, &b);
+            if (k1==1 || m==0 || b==0){
+                return 0;
+            }
             
             
             for(int k = 0; k < tau[i]; k++)
@@ -1714,9 +1717,9 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[], const int size, const 
                     F[i] += buffer[k]*buffer[k];
                 }
             }
-            else{
-                return 0.0;
-            }
+            // else{
+            //     return 0.0;
+            // }
         }
         
         if (strcmp(how, "rsrangefit") == 0) {
@@ -1738,7 +1741,12 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[], const int size, const 
     for (int i = 0; i < nTau; i++)
     {
         logtt[i] = log(tau[i]);
-        logFF[i] = log(F[i]);
+        if(F[i]==0){
+            logFF[i] = 1;
+        }
+        else{
+            logFF[i] = log(F[i]);
+        }
     }
     
     int minPoints = 6;
@@ -1753,8 +1761,11 @@ double SC_FluctAnal_2_50_1_logi_prop_r1(const double y[], const int size, const 
         
         sserr[i - minPoints] = 0.0;
         
-        linreg(i, logtt, logFF, &m1, &b1);
-        linreg(ntt-i+1, logtt+i-1, logFF+i-1, &m2, &b2);
+        int k2= linreg(i, logtt, logFF, &m1, &b1);
+        int k3= linreg(ntt-i+1, logtt+i-1, logFF+i-1, &m2, &b2);
+        if (k2 ==1 || k3==1 || m1==0 || b1==0 || m2==0 || b2==0){
+            return 0;
+        }
         
         for(int j = 0; j < i; j ++)
         {
@@ -2894,9 +2905,7 @@ double CO_f1ecac(const double y[], const int size)
     double * autocorrs = co_autocorrs(y, size);
     // threshold to cross
     double thresh = 0.36;
-
     double out = (double)size;
-    std::cout << "HOST" << out<< std::endl;
     for(int i = 0; i < size-2; i++){
         // printf("i=%d autocorrs_i=%1.3f\n", i, autocorrs[i]);
         if ( round(autocorrs[i+1],2) < thresh ){
@@ -2904,13 +2913,12 @@ double CO_f1ecac(const double y[], const int size)
             if (m == 0) continue; 
             double dy = thresh - round(autocorrs[i],2);
             double dx = dy/m;
-            out = ((double)i) + round(dx,2);
+            out = round(((double)i) + round(dx,2),2);
             // printf("thresh=%1.3f AC(i)=%1.3f AC(i-1)=%1.3f m=%1.3f dy=%1.3f dx=%1.3f out=%1.3f\n", thresh, autocorrs[i], autocorrs[i-1], m, dy, dx, out);
             free(autocorrs);
             return out;
         }
     }
-    
     free(autocorrs);
     
     return out;
@@ -3048,14 +3056,10 @@ double * co_autocorrs(const double y[], const int size)
     fft(F, nFFT, tw);
     dot_multiply(F, F, nFFT);
     fft(F, nFFT, tw);
-    cplx divisor = F[0];
-    for (int i = 0; i < nFFT; i++) {
-        F[i] = _Cdivcc(F[i], divisor); // F[i] / divisor;
-    }
-    
     double * out = (double*) malloc(nFFT * 2 * sizeof(out));
-    for (int i = 0; i < nFFT; i++) {
-        out[i] = real(F[i]);
+    for (int i = 0; i < 2 * DATA_SIZE; i++) {
+  
+        out[i] = F[i].real()/F[0].real();
     }
     free(F);
     free(tw);
@@ -3097,15 +3101,18 @@ int CO_FirstMin_ac(const double y[], const int size)
 }
 
 int co_firstzero(const double y[], const int size, const int maxtau) {
-    if (!y || size <= 0 || maxtau < 0) return -1;
+    // if (!y || size <= 0 || maxtau < 0) return -1;
 
     double* autocorrs = co_autocorrs(y, size);
-    if (!autocorrs) return -1; // Error in autocorrelation computation
+    // if (!autocorrs) return -1; // Error in autocorrelation computation
 
     int zerocrossind = 0;
-    while(autocorrs[zerocrossind] > 0 && zerocrossind < maxtau)
-    {
-        zerocrossind += 1;
+    for (int i = 0; i < DATA_SIZE-1; i++){
+        if(autocorrs[i] <= 0 || i >=maxtau)
+        {
+            zerocrossind = i;
+            break;
+        }
     }
 
     delete[] autocorrs;
@@ -3194,12 +3201,52 @@ int main(int argc, char** argv) {
 
 
     /*====================================================INIT INPUT/OUTPUT VECTORS===============================================================*/
-    std::vector<data_t, aligned_allocator<data_t> > input(DATA_SIZE);
-    data_t *input_sw = (data_t*) malloc(sizeof(data_t) * (2 * DATA_SIZE));
-    std::vector<data_t, aligned_allocator<data_t> > output1_hw(1);
-    std::vector<data_t, aligned_allocator<data_t> > output2_hw(1);
-    std::vector<data_t, aligned_allocator<data_t> > output3_hw(1);
-    data_t *output_sw = (data_t*) malloc(sizeof(data_t) * (22));
+    std::vector<data_t, aligned_allocator<data_t> > input(TOTAL_DATA_SIZE);
+    data_t *input_sw = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE + DATA_SIZE - 1));
+    std::vector<data_t, aligned_allocator<data_t> > output1_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output2_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output3_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output4_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output5_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output6_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output7_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output8_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output9_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output10_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output11_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output12_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output13_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output14_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output15_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output16_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output17_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output18_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output19_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output20_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output21_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    std::vector<data_t, aligned_allocator<data_t> > output22_hw(TOTAL_DATA_SIZE-DATA_SIZE);
+    data_t *output_sw1 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw2 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw3 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw4 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw5 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw6 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw7 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw8 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw9 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw10 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw11 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw12 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw13 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw14 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw15 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw16 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw17 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw18 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw19 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw20 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw21 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
+    data_t *output_sw22 = (data_t*) malloc(sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE));
 
 
     for (int i = 0; i < DATA_SIZE-1; i++) {
@@ -3213,47 +3260,86 @@ int main(int argc, char** argv) {
 
     /*====================================================SW VERIFICATION===============================================================*/
 
-
-    output_sw[3] = CO_FirstMin_ac(input_sw, DATA_SIZE);
-    output_sw[4] = FC_LocalSimple_mean1_tauresrat(input_sw, DATA_SIZE);
-    output_sw[5] = CO_f1ecac(input_sw, DATA_SIZE);
-    output_sw[6] = CO_Embed2_Dist_tau_d_expfit_meandiff(input_sw, DATA_SIZE);
-    output_sw[7] = CO_HistogramAMI_even_2_5(input_sw, DATA_SIZE);
-    output_sw[8] = SB_MotifThree_quantile_hh(input_sw, DATA_SIZE);
-    output_sw[9] = SB_TransitionMatrix_3ac_sumdiagcov(input_sw, DATA_SIZE);
-    output_sw[10] = DN_HistogramMode_5(input_sw, DATA_SIZE);
-    output_sw[11] = DN_HistogramMode_10(input_sw, DATA_SIZE);
-    output_sw[13] = SC_FluctAnal_2_dfa_50_1_2_logi_prop_r1(input_sw, DATA_SIZE);
-    output_sw[12] = SC_FluctAnal_2_rsrangefit_50_1_logi_prop_r1(input_sw, DATA_SIZE);
-    output_sw[14] = PD_PeriodicityWang_th0_01(input_sw, DATA_SIZE);
-    output_sw[15] = FC_LocalSimple_mean3_stderr(input_sw, DATA_SIZE);
-    output_sw[16] = SP_Summaries_welch_rect_area_5_1(input_sw, DATA_SIZE);
-    output_sw[17] = SP_Summaries_welch_rect_centroid(input_sw, DATA_SIZE);
-    output_sw[1] = DN_OutlierInclude_p_001_mdrmd(input_sw, DATA_SIZE);
-    output_sw[18] = DN_OutlierInclude_n_001_mdrmd(input_sw, DATA_SIZE);
-    output_sw[19] = SB_BinaryStats_diff_longstretch0(input_sw, DATA_SIZE);
-    output_sw[20] = SB_BinaryStats_mean_longstretch1(input_sw, DATA_SIZE);
-    output_sw[2] = IN_AutoMutualInfoStats_40_gaussian_fmmi(input_sw, DATA_SIZE);
-    output_sw[21] = CO_trev_1_num(input_sw, DATA_SIZE);
-    output_sw[0] = MD_hrv_classic_pnn40(input_sw, DATA_SIZE);
-
+    for(int i = 0; i < TOTAL_DATA_SIZE-DATA_SIZE; i++){
+        output_sw18[i] = CO_FirstMin_ac(input_sw+i, DATA_SIZE);
+        output_sw22[i] = FC_LocalSimple_mean1_tauresrat(input_sw+i, DATA_SIZE);
+        output_sw19[i] = CO_f1ecac(input_sw+i, DATA_SIZE);
+        output_sw20[i] = CO_Embed2_Dist_tau_d_expfit_meandiff(input_sw+i, DATA_SIZE);
+        output_sw6[i] = CO_HistogramAMI_even_2_5(input_sw+i, DATA_SIZE);
+        output_sw7[i] = SB_MotifThree_quantile_hh(input_sw+i, DATA_SIZE);
+        output_sw21[i] = SB_TransitionMatrix_3ac_sumdiagcov(input_sw+i, DATA_SIZE);
+        output_sw8[i] = DN_HistogramMode_5(input_sw+i, DATA_SIZE);
+        output_sw9[i] = DN_HistogramMode_10(input_sw+i, DATA_SIZE);
+        output_sw11[i] = SC_FluctAnal_2_dfa_50_1_2_logi_prop_r1(input_sw+i, DATA_SIZE);
+        output_sw10[i] = SC_FluctAnal_2_rsrangefit_50_1_logi_prop_r1(input_sw+i, DATA_SIZE);
+        output_sw12[i] = PD_PeriodicityWang_th0_01(input_sw+i, DATA_SIZE);
+        output_sw13[i] = FC_LocalSimple_mean3_stderr(input_sw+i, DATA_SIZE);
+        output_sw4[i] = SP_Summaries_welch_rect_area_5_1(input_sw+i, DATA_SIZE);
+        output_sw5[i] = SP_Summaries_welch_rect_centroid(input_sw+i, DATA_SIZE);
+        output_sw2[i] = DN_OutlierInclude_p_001_mdrmd(input_sw+i, DATA_SIZE);
+        output_sw14[i] = DN_OutlierInclude_n_001_mdrmd(input_sw+i, DATA_SIZE);
+        output_sw15[i] = SB_BinaryStats_diff_longstretch0(input_sw+i, DATA_SIZE);
+        output_sw16[i] = SB_BinaryStats_mean_longstretch1(input_sw+i, DATA_SIZE);
+        output_sw3[i] = IN_AutoMutualInfoStats_40_gaussian_fmmi(input_sw+i, DATA_SIZE);
+        output_sw17[i] = CO_trev_1_num(input_sw+i, DATA_SIZE);
+        output_sw1[i] = MD_hrv_classic_pnn40(input_sw+i, DATA_SIZE);
+    }
 
     /*====================================================Setting up kernel I/O===============================================================*/
 
     /* INPUT BUFFERS */
-    OCL_CHECK(err, cl::Buffer buffer_input(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * DATA_SIZE, input.data(), &err));  
+    OCL_CHECK(err, cl::Buffer buffer_input(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * TOTAL_DATA_SIZE, input.data(), &err));  
 
 
     /* OUTPUT BUFFERS */
-    OCL_CHECK(err, cl::Buffer buffer_output1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * 1, output1_hw.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_output2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * 1, output2_hw.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_output3(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * 1, output3_hw.data(), &err));
-
+    OCL_CHECK(err, cl::Buffer buffer_output1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output1_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output2_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output3(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output3_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output4(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output4_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output5(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output5_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output6(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output6_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output7(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output7_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output8(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output8_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output9(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output9_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output10(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output10_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output11(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output11_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output12(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output12_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output13(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output13_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output14(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output14_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output15(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output15_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output16(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output16_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output17(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output17_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output18(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output18_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output19(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output19_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output20(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output20_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output21(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output21_hw.data(), &err));
+    OCL_CHECK(err, cl::Buffer buffer_output22(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(data_t) * (TOTAL_DATA_SIZE-DATA_SIZE), output22_hw.data(), &err));
+    
+    
     /* SETTING INPUT PARAMETERS */
     OCL_CHECK(err, err = krnl2.setArg(0, buffer_input));
-    OCL_CHECK(err, err = krnl3.setArg(3, buffer_output1));
-    OCL_CHECK(err, err = krnl3.setArg(4, buffer_output2));
-    OCL_CHECK(err, err = krnl3.setArg(5, buffer_output3));
+    OCL_CHECK(err, err = krnl3.setArg(22, buffer_output1));
+    OCL_CHECK(err, err = krnl3.setArg(23, buffer_output2));
+    OCL_CHECK(err, err = krnl3.setArg(24, buffer_output3));
+    OCL_CHECK(err, err = krnl3.setArg(25, buffer_output4));
+    OCL_CHECK(err, err = krnl3.setArg(26, buffer_output5));
+    OCL_CHECK(err, err = krnl3.setArg(27, buffer_output6));
+    OCL_CHECK(err, err = krnl3.setArg(28, buffer_output7));
+    OCL_CHECK(err, err = krnl3.setArg(29, buffer_output8));
+    OCL_CHECK(err, err = krnl3.setArg(30, buffer_output9));
+    OCL_CHECK(err, err = krnl3.setArg(31, buffer_output10));
+    OCL_CHECK(err, err = krnl3.setArg(32, buffer_output11));
+    OCL_CHECK(err, err = krnl3.setArg(33, buffer_output12));
+    OCL_CHECK(err, err = krnl3.setArg(34, buffer_output13));
+    OCL_CHECK(err, err = krnl3.setArg(35, buffer_output14));
+    OCL_CHECK(err, err = krnl3.setArg(36, buffer_output15));
+    OCL_CHECK(err, err = krnl3.setArg(37, buffer_output16));
+    OCL_CHECK(err, err = krnl3.setArg(38, buffer_output17));
+    OCL_CHECK(err, err = krnl3.setArg(39, buffer_output18));
+    OCL_CHECK(err, err = krnl3.setArg(40, buffer_output19));
+    OCL_CHECK(err, err = krnl3.setArg(41, buffer_output20));
+    OCL_CHECK(err, err = krnl3.setArg(42, buffer_output21));
+    OCL_CHECK(err, err = krnl3.setArg(43, buffer_output22));
     /*====================================================KERNEL===============================================================*/
     /* HOST -> DEVICE DATA TRANSFER*/
     std::cout << "HOST -> DEVICE" << std::endl;
@@ -3265,10 +3351,11 @@ int main(int argc, char** argv) {
     /*STARTING KERNEL(S)*/
     std::cout << "STARTING KERNEL(S)" << std::endl;
     comp = clock();
-   
-    OCL_CHECK(err, err = q.enqueueTask(krnl2));
-    OCL_CHECK(err, err = q.enqueueTask(krnl1));
-    OCL_CHECK(err, err = q.enqueueTask(krnl3));
+    for(int i = 0; i < TOTAL_DATA_SIZE-DATA_SIZE; i++){
+        OCL_CHECK(err, err = q.enqueueTask(krnl2));
+        OCL_CHECK(err, err = q.enqueueTask(krnl1));
+        OCL_CHECK(err, err = q.enqueueTask(krnl3));
+    }
     q.finish();
     comp = clock() - comp;
     std::cout << "KERNEL(S) FINISHED" << std::endl;
@@ -3280,6 +3367,25 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output1}, CL_MIGRATE_MEM_OBJECT_HOST));
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output2}, CL_MIGRATE_MEM_OBJECT_HOST));
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output3}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output4}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output5}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output6}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output7}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output8}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output9}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output10}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output11}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output12}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output13}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output14}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output15}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output16}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output17}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output18}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output19}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output20}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output21}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output22}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
     dtoh = clock() - dtoh;
 
@@ -3293,19 +3399,127 @@ int main(int argc, char** argv) {
    
     bool match = true;
 
-    // std::cout << "HW:" << output_hw[0] << " SW:" << output_sw[0] << std::endl;
-    // if (output_hw[0] != output_sw[0]) match = false;
-  
-    std::cout << "HW:" << output1_hw[0] << " SW:" << output_sw[0] << std::endl;
-    if (output1_hw[0] != output_sw[0]) match = false;
-    std::cout << "HW:" << output2_hw[0] << " SW:" << output_sw[1] << std::endl;
-    if (output2_hw[0] != output_sw[1]) match = false;
-    std::cout << "HW:" << output3_hw[0] << " SW:" << output_sw[2] << std::endl;
-    if (output3_hw[0] != output_sw[2]) match = false;
+    for(int i = 0; i < TOTAL_DATA_SIZE-DATA_SIZE; i++){
+        if (round(output1_hw[i],3) != round(output_sw1[i],3)){
+            std::cout << "HW1:" << output1_hw[i] << " SW1:" << output_sw1[i] << std::endl;
+            match = false;
+        }
+        if (round(output2_hw[i],3) != round(output_sw2[i],3)) {
+            match = false;
+            std::cout << "HW2:" << output2_hw[i] << " SW2:" << output_sw2[i] << std::endl;
+        }
+        if (round(output3_hw[i],3) != round(output_sw3[i],3)){
+           match = false;
+           std::cout << "HW3:" << output3_hw[i] << " SW3:" << output_sw3[i] << std::endl;  
+        } 
+        if (round(output4_hw[i],3) != round(output_sw4[i],3)){
+           std::cout << "HW4:" << output4_hw[i] << " SW4:" << output_sw4[i] << std::endl;
+           match = false;  
+        } 
+
+        if (round(output5_hw[i],3) != round(output_sw5[i],3)){
+            match = false; 
+            std::cout << "HW5:" << output5_hw[i] << " SW5:" << output_sw5[i] << std::endl;
+        } 
+        if (round(output6_hw[i],3) != round(output_sw6[i],3)){
+          std::cout << "HW6:" << output6_hw[i] << " SW6:" << output_sw6[i] << std::endl;
+          match = false;  
+        } 
+        if (round(output7_hw[i],3) != round(output_sw7[i],3)){
+            std::cout << "HW7:" << output7_hw[i] << " SW7:" << output_sw7[i] << std::endl;
+            match = false;  
+        } 
+        if (round(output8_hw[i],3) != round(output_sw8[i],3)) {
+            match = false;
+            std::cout << "HW8:" << output8_hw[i] << " SW8:" << output_sw8[i] << std::endl;
+        }
+       
+        if (round(output9_hw[i],3) != round(output_sw9[i],3)){ 
+            std::cout << "HW9:" << output9_hw[i] << " SW9:" << output_sw9[i] << std::endl;
+            match = false;
+        }
+
+        if (round(output10_hw[i],3) != round(output_sw10[i],3)){
+           match = false; 
+           std::cout << "HW10:" << output10_hw[i] << " SW10:" << output_sw10[i] << std::endl;
+        } 
+        if (round(output11_hw[i],3) != round(output_sw11[i],3)){
+            match = false;
+            std::cout << "HW11:" << output11_hw[i] << " SW11:" << output_sw11[i] << std::endl;
+        } 
+   
+        if (round(output12_hw[i],3) != round(output_sw12[i],3)){
+            std::cout << "HW12:" << output12_hw[i] << " SW12:" << output_sw12[i] << std::endl;
+            match = false;
+        }
+        if (round(output13_hw[i],3) != round(output_sw13[i],3)) {
+            std::cout << "HW13:" << output13_hw[i] << " SW13:" << output_sw13[i] << std::endl;
+            match = false;
+        }
+        if (round(output14_hw[i],3) != round(output_sw14[i],3)){
+          match = false;  
+          std::cout << "HW14:" << output14_hw[i] << " SW14:" << output_sw14[i] << std::endl;
+        } 
+        if (round(output15_hw[i],3) != round(output_sw15[i],3)){
+            std::cout << "HW15:" << output15_hw[i] << " SW15:" << output_sw15[i] << std::endl;
+            match = false;
+        }
+        if (round(output16_hw[i],3) != round(output_sw16[i],3)){
+            std::cout << "HW16:" << output16_hw[i] << " SW16:" << output_sw16[i] << std::endl;
+             match = false;
+        }
+        if (round(output17_hw[i],3) != round(output_sw17[i],3)) {
+            std::cout << "HW17:" << output17_hw[i] << " SW17:" << output_sw17[i] << std::endl;
+            match = false;
+        }
+
+        if (round(output18_hw[i],3) != round(output_sw18[i],3)) {
+            std::cout << "HW18:" << output18_hw[i] << " SW18:" << output_sw18[i] << std::endl;
+            match = false;
+        }
+        if (round(output19_hw[i],3) != round(output_sw19[i],3)){
+            std::cout << "HW19:" << output19_hw[i] << " SW19:" << output_sw19[i] << std::endl;
+            match = false;
+        } 
+        if (round(output20_hw[i],3) != round(output_sw20[i],3)) {
+             std::cout << "HW20:" << output20_hw[i] << " SW20:" << output_sw20[i] << std::endl;
+            match = false;
+        }
+
+        if (round(output21_hw[i],3) != round(output_sw21[i],3)){
+            std::cout << "HW21:" << output21_hw[i] << " SW21:" << output_sw21[i] << std::endl;
+            match = false;
+        }
+        if (round(output22_hw[i],3) != round(output_sw22[i],3)){
+            std::cout << "HW22:" << output22_hw[i] << " SW22:" << output_sw22[i] << std::endl;
+             match = false;
+        }
+    }
 
     std::cout << std::endl << "TEST " << (match ? "PASSED" : "FAILED") << std::endl;
 
-    free(output_sw);
+    free(output_sw1);
+    free(output_sw2);
+    free(output_sw3);
+    free(output_sw4);
+    free(output_sw5);
+    free(output_sw6);
+    free(output_sw7);
+    free(output_sw8);
+    free(output_sw9);
+    free(output_sw10);
+    free(output_sw11);
+    free(output_sw12);
+    free(output_sw13);
+    free(output_sw14);
+    free(output_sw15);
+    free(output_sw16);
+    free(output_sw17);
+    free(output_sw18);
+    free(output_sw19);
+    free(output_sw20);
+    free(output_sw21);
+    free(output_sw22);
     free(input_sw);
 
 
